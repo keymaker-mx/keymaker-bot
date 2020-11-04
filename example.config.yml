@@ -1,0 +1,7 @@
+homeserver_url: ""
+mxid: ""
+password: ""
+store_path: ""
+
+admins:
+  - ""
