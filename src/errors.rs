@@ -10,6 +10,8 @@ pub enum ParseErrors {
     DatabaseError(#[from] sqlx::Error),
     #[error(transparent)]
     EnvError(#[from] std::env::VarError),
+    #[error(transparent)]
+    TokioSendError(#[from] tokio::sync::mpsc::error::SendError<matrix_sdk::events::AnyMessageEventContent>),
     #[error("unknown parsing error")]
     Unknown,
 }

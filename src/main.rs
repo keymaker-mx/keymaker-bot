@@ -1,4 +1,8 @@
 use crate::config::Config;
+use crate::{
+    errors::ParseErrors,
+    extensions::{AnyMessageEventContentExt, RoomExt},
+};
 use matrix_sdk::{
     self,
     events::{
@@ -8,22 +12,29 @@ use matrix_sdk::{
     Client, ClientConfig, EventEmitter, JsonStore, SyncRoom, SyncSettings,
 };
 use matrix_sdk_common_macros::async_trait;
+use tokio::sync::mpsc;
 use tracing::*;
 use url::Url;
 
-mod commandparser;
+mod command_parser;
 mod config;
 mod errors;
+mod extensions;
 
 struct KeybaseBot {
     /// This clone of the `Client` will send requests to the server,
     /// while the other keeps us in sync with the server using `sync`.
     client: Client,
+    config: Config<'static>,
 }
 
 impl KeybaseBot {
-    pub fn new(client: Client) -> Self {
-        Self { client }
+    #[instrument]
+    pub fn new(client: Client, config: Config<'static>) -> Self {
+        Self {
+            client,
+            config: config.clone(),
+        }
     }
 }
 
@@ -40,34 +51,64 @@ impl EventEmitter for KeybaseBot {
             } else {
                 String::new()
             };
+            if msg_body == "" {
+                return;
+            }
 
-            if msg_body.contains("!party") {
-                let content = AnyMessageEventContent::RoomMessage(MessageEventContent::Text(
-                    TextMessageEventContent {
-                        body: "🎉🎊🥳 let's PARTY!! 🥳🎊🎉".to_string(),
-                        formatted: None,
-                        relates_to: None,
-                    },
-                ));
-                // we clone here to hold the lock for as little time as possible.
-                let room_id = room.read().await.room_id.clone();
+            let sender = event.sender.clone().to_string();
 
-                println!("sending");
+            let (tx, mut rx) = mpsc::channel(100);
+            let mut parser = crate::command_parser::CommandParser {
+                config: self.config.clone(),
+                tx,
+            };
+            let room_id = room.read().await.clone().room_id;
 
-                self.client
-                    // send our message to the room we found the "!party" command in
-                    // the last parameter is an optional Uuid which we don't care about.
-                    .room_send(&room_id, content, None)
-                    .await
-                    .unwrap();
+            let display_name = room
+                .read()
+                .await
+                .clone()
+                .get_sender_displayname(event)
+                .to_string();
 
-                println!("message sent");
+            let cloned_client = self.client.clone();
+            let event_id = event.event_id.clone();
+            let cloned_room_id = room_id.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = parser.parse(sender, display_name, msg_body).await {
+                    if e.to_string() == ParseErrors::NotACommand.to_string()
+                        || e.to_string() == ParseErrors::NotAllowed.to_string()
+                    {
+                        // Ignore
+                        return;
+                    }
+                    if let Err(e) = cloned_client.clone()
+                        .room_send(
+                            &cloned_room_id.clone(),
+                            AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(
+                                format!("Error happened: {}", e.to_string()),
+                            )),
+                            None,
+                        )
+                        .await
+                    {
+                        error!("{}", e);
+                    }
+                }
+            });
+
+            while let Some(mut v) = rx.recv().await {
+                v.add_relates_to(event_id.clone());
+                if let Err(e) = self.client.clone().room_send(&room_id.clone(), v, None).await {
+                    error!("{}", e);
+                }
             }
         }
     }
 }
 
-async fn login_and_sync(config: Config<'_>) -> Result<(), matrix_sdk::Error> {
+async fn login_and_sync(config: Config<'static>) -> Result<(), matrix_sdk::Error> {
     let store = JsonStore::open(&config.store_path.to_string())?;
     let client_config = ClientConfig::new().state_store(Box::new(store));
 
@@ -89,7 +130,7 @@ async fn login_and_sync(config: Config<'_>) -> Result<(), matrix_sdk::Error> {
     // add our CommandBot to be notified of incoming messages, we do this after the initial
     // sync to avoid responding to messages before the bot was running.
     client
-        .add_event_emitter(Box::new(KeybaseBot::new(client.clone())))
+        .add_event_emitter(Box::new(KeybaseBot::new(client.clone(), config)))
         .await;
 
     // since we called `sync_once` before we entered our sync loop we must pass
