@@ -17,7 +17,7 @@ serde = "1.0"
 serde_yaml = "0.8.13"
 url = "2.1.1"
 
-mrsbfh = {git = "https://github.com/MTRNord/mrsbfh", rev = "3612d23d2c083a5b2f9683f38446d63fb46e9d8e"}
+mrsbfh = {git = "https://github.com/MTRNord/mrsbfh", rev = "33f9278ac39c1cbe77e5567fff9953269538d1d9"}
 
 tracing = "0.1"
 tracing-subscriber = "0.2"

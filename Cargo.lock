@@ -1254,7 +1254,7 @@ dependencies = [
 [[package]]
 name = "mrsbfh"
 version = "0.1.0"
-source = "git+https://github.com/MTRNord/mrsbfh?rev=3612d23d2c083a5b2f9683f38446d63fb46e9d8e#3612d23d2c083a5b2f9683f38446d63fb46e9d8e"
+source = "git+https://github.com/MTRNord/mrsbfh?rev=33f9278ac39c1cbe77e5567fff9953269538d1d9#33f9278ac39c1cbe77e5567fff9953269538d1d9"
 dependencies = [
  "const-concat",
  "matrix-sdk",
@@ -1272,7 +1272,7 @@ dependencies = [
 [[package]]
 name = "mrsbfh-macros"
 version = "0.1.0"
-source = "git+https://github.com/MTRNord/mrsbfh?rev=3612d23d2c083a5b2f9683f38446d63fb46e9d8e#3612d23d2c083a5b2f9683f38446d63fb46e9d8e"
+source = "git+https://github.com/MTRNord/mrsbfh?rev=33f9278ac39c1cbe77e5567fff9953269538d1d9#33f9278ac39c1cbe77e5567fff9953269538d1d9"
 dependencies = [
  "convert_case",
  "proc-macro2",

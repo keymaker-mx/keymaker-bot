@@ -6,9 +6,13 @@ use matrix_sdk::{
         room::member::MemberEventContent, room::message::MessageEventContent, StrippedStateEvent,
         SyncMessageEvent,
     },
-    Client, ClientConfig, EventEmitter, JsonStore, SyncRoom, SyncSettings,
+    Client, ClientConfig, EventEmitter, Session as SDKSession, SyncRoom, SyncSettings,
 };
 use mrsbfh::config::Loader;
+use mrsbfh::utils::Session;
+use std::convert::TryFrom;
+use std::fs;
+use std::path::Path;
 use tokio::sync::mpsc;
 use tracing::*;
 use url::Url;
@@ -50,36 +54,66 @@ impl EventEmitter for KeybaseBot {
     }
 }
 
-async fn login_and_sync(config: Config<'static>) -> Result<(), matrix_sdk::Error> {
-    let store = JsonStore::open(&config.store_path.to_string())?;
-    let client_config = ClientConfig::new().state_store(Box::new(store));
+async fn login_and_sync(config: Config<'static>) -> color_eyre::Result<()> {
+    let store_path_string = config.store_path.to_string();
+    let store_path = Path::new(&store_path_string);
+    if !store_path.exists() {
+        fs::create_dir_all(store_path)?;
+    }
+
+    let client_config = ClientConfig::new().store_path(fs::canonicalize(&store_path)?);
 
     let homeserver_url =
         Url::parse(&config.homeserver_url).expect("Couldn't parse the homeserver URL");
-    // create a new Client with the given homeserver url and config
+
     let mut client = Client::new_with_config(homeserver_url, client_config).unwrap();
 
-    client
-        .login(&config.mxid, &config.password, None, Some("keybase bot"))
-        .await?;
+    if let Some(session) = Session::load(config.session_path.parse().unwrap()) {
+        info!("Starting relogin");
+
+        let session = SDKSession {
+            access_token: session.access_token,
+            device_id: session.device_id.into(),
+            user_id: matrix_sdk::identifiers::UserId::try_from(session.user_id.as_str()).unwrap(),
+        };
+
+        if let Err(e) = client.restore_login(session).await {
+            error!("{}", e);
+        };
+        info!("Finished relogin");
+    } else {
+        info!("Starting login");
+        let login_response = client
+            .login(
+                &config.mxid,
+                &config.password,
+                None,
+                Some(&"timetracking-bot".to_string()),
+            )
+            .await;
+        match login_response {
+            Ok(login_response) => {
+                info!("Session: {:#?}", login_response);
+                let session = Session {
+                    homeserver: client.homeserver().to_string(),
+                    user_id: login_response.user_id.to_string(),
+                    access_token: login_response.access_token,
+                    device_id: login_response.device_id.into(),
+                };
+                session.save(config.session_path.parse().unwrap())?;
+            }
+            Err(e) => error!("Error while login: {}", e),
+        }
+        info!("Finished login");
+    }
 
     println!("logged in as {}", config.mxid);
 
-    // An initial sync to set up state and so our bot doesn't respond to old messages.
-    // If the `StateStore` finds saved state in the location given the initial sync will
-    // be skipped in favor of loading state from the store
-    client.sync_once(SyncSettings::default()).await.unwrap();
-    // add our CommandBot to be notified of incoming messages, we do this after the initial
-    // sync to avoid responding to messages before the bot was running.
     client
         .add_event_emitter(Box::new(KeybaseBot::new(client.clone(), config)))
         .await;
 
-    // since we called `sync_once` before we entered our sync loop we must pass
-    // that sync token to `sync`
-    let settings = SyncSettings::default().token(client.sync_token().await.unwrap());
-    // this keeps state from the server streaming in to CommandBot via the EventEmitter trait
-    client.sync(settings).await;
+    client.sync(SyncSettings::default()).await;
 
     Ok(())
 }
