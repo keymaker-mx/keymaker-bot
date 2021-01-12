@@ -1,22 +1,19 @@
+use crate::commands::match_command;
 use crate::config::Config;
-use crate::{
-    errors::ParseErrors,
-    extensions::{AnyMessageEventContentExt, RoomExt},
-};
 use matrix_sdk::{
-    self,
+    self, async_trait,
     events::{
-        room::message::{MessageEventContent, TextMessageEventContent},
-        AnyMessageEventContent, SyncMessageEvent,
+        room::member::MemberEventContent, room::message::MessageEventContent, StrippedStateEvent,
+        SyncMessageEvent,
     },
     Client, ClientConfig, EventEmitter, JsonStore, SyncRoom, SyncSettings,
 };
-use matrix_sdk_common_macros::async_trait;
+use mrsbfh::config::Loader;
 use tokio::sync::mpsc;
 use tracing::*;
 use url::Url;
 
-mod command_parser;
+mod commands;
 mod config;
 mod errors;
 mod extensions;
@@ -38,73 +35,18 @@ impl KeybaseBot {
     }
 }
 
+#[mrsbfh::commands::commands]
+#[mrsbfh::utils::autojoin]
 #[async_trait]
 impl EventEmitter for KeybaseBot {
     async fn on_room_message(&self, room: SyncRoom, event: &SyncMessageEvent<MessageEventContent>) {
-        if let SyncRoom::Joined(room) = room {
-            let msg_body = if let SyncMessageEvent {
-                content: MessageEventContent::Text(TextMessageEventContent { body: msg_body, .. }),
-                ..
-            } = event
-            {
-                msg_body.clone()
-            } else {
-                String::new()
-            };
-            if msg_body == "" {
-                return;
-            }
-
-            let sender = event.sender.clone().to_string();
-
-            let (tx, mut rx) = mpsc::channel(100);
-            let mut parser = crate::command_parser::CommandParser {
-                config: self.config.clone(),
-                tx,
-            };
-            let room_id = room.read().await.clone().room_id;
-
-            let display_name = room
-                .read()
-                .await
-                .clone()
-                .get_sender_displayname(event)
-                .to_string();
-
-            let cloned_client = self.client.clone();
-            let event_id = event.event_id.clone();
-            let cloned_room_id = room_id.clone();
-
-            tokio::spawn(async move {
-                if let Err(e) = parser.parse(sender, display_name, msg_body).await {
-                    if e.to_string() == ParseErrors::NotACommand.to_string()
-                        || e.to_string() == ParseErrors::NotAllowed.to_string()
-                    {
-                        // Ignore
-                        return;
-                    }
-                    if let Err(e) = cloned_client.clone()
-                        .room_send(
-                            &cloned_room_id.clone(),
-                            AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(
-                                format!("Error happened: {}", e.to_string()),
-                            )),
-                            None,
-                        )
-                        .await
-                    {
-                        error!("{}", e);
-                    }
-                }
-            });
-
-            while let Some(mut v) = rx.recv().await {
-                v.add_relates_to(event_id.clone());
-                if let Err(e) = self.client.clone().room_send(&room_id.clone(), v, None).await {
-                    error!("{}", e);
-                }
-            }
-        }
+    }
+    async fn on_stripped_state_member(
+        &self,
+        room: SyncRoom,
+        room_member: &StrippedStateEvent<MemberEventContent>,
+        _: Option<MemberEventContent>,
+    ) {
     }
 }
 
@@ -143,8 +85,12 @@ async fn login_and_sync(config: Config<'static>) -> Result<(), matrix_sdk::Error
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+async fn main() -> color_eyre::Result<()> {
+    tracing_subscriber::fmt()
+        .pretty()
+        .with_thread_names(true)
+        .with_max_level(tracing::Level::INFO)
+        .init();
 
     info!("Loading Configs...");
     let config = Config::load("config.yml")?;

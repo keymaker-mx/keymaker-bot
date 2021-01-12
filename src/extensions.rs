@@ -1,6 +1,6 @@
 use matrix_sdk::{
     events::{
-        room::message::{InReplyTo, MessageEventContent, RelatesTo},
+        room::message::{InReplyTo, MessageEventContent, Relation},
         AnyMessageEventContent, SyncMessageEvent,
     },
     identifiers::EventId,
@@ -14,14 +14,12 @@ pub trait AnyMessageEventContentExt {
 
 impl AnyMessageEventContentExt for AnyMessageEventContent {
     fn add_relates_to(&mut self, new_relates_to: EventId) {
-        if let AnyMessageEventContent::RoomMessage(message) = self {
-            if let MessageEventContent::Notice(notice) = message {
-                notice.relates_to = Some(RelatesTo {
-                    in_reply_to: Some(InReplyTo {
-                        event_id: new_relates_to,
-                    }),
-                });
-            }
+        if let AnyMessageEventContent::RoomMessage(MessageEventContent::Notice(notice)) = self {
+            notice.relates_to = Some(Relation::Reply {
+                in_reply_to: InReplyTo {
+                    event_id: new_relates_to,
+                },
+            });
         }
     }
 }
