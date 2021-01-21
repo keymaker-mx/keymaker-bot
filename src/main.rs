@@ -21,6 +21,7 @@ mod commands;
 mod config;
 mod errors;
 mod extensions;
+mod models;
 
 struct KeybaseBot {
     /// This clone of the `Client` will send requests to the server,

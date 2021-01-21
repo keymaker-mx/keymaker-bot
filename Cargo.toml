@@ -17,6 +17,8 @@ serde = "1.0"
 serde_yaml = "0.8.13"
 url = "2.1.1"
 
+reqwest = {version = "0.10", features = ["json"]}
+
 mrsbfh = {git = "https://github.com/MTRNord/mrsbfh", rev = "33f9278ac39c1cbe77e5567fff9953269538d1d9"}
 
 tracing = "0.1"
