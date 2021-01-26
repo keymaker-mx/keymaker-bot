@@ -3,6 +3,7 @@ mxid: ""
 password: ""
 store_path: ""
 session_path: ""
+admin_room_id: ""
 
 admins:
   - ""

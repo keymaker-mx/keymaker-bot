@@ -6,6 +6,8 @@ use matrix_sdk::{
         room::member::MemberEventContent, room::message::MessageEventContent, StrippedStateEvent,
         SyncMessageEvent,
     },
+    identifiers::RoomId,
+    identifiers::RoomIdOrAliasId,
     Client, ClientConfig, EventEmitter, Session as SDKSession, SyncRoom, SyncSettings,
 };
 use mrsbfh::config::Loader;
@@ -45,6 +47,18 @@ impl KeybaseBot {
 #[async_trait]
 impl EventEmitter for KeybaseBot {
     async fn on_room_message(&self, room: SyncRoom, event: &SyncMessageEvent<MessageEventContent>) {
+        if let SyncRoom::Joined(ref room) = room {
+            let locked_room = room.read().await;
+            if locked_room.room_id == RoomId::try_from(self.config.admin_room_id.as_ref()).unwrap()
+                && !self
+                    .config
+                    .admins
+                    .iter()
+                    .any(|x| *x == event.sender.to_string())
+            {
+                return;
+            }
+        }
     }
     async fn on_stripped_state_member(
         &self,
@@ -109,6 +123,13 @@ async fn login_and_sync(config: Config<'static>) -> color_eyre::Result<()> {
     }
 
     println!("logged in as {}", config.mxid);
+
+    client
+        .join_room_by_id_or_alias(
+            &RoomIdOrAliasId::try_from(config.admin_room_id.as_ref())?,
+            &[],
+        )
+        .await?;
 
     client
         .add_event_emitter(Box::new(KeybaseBot::new(client.clone(), config)))

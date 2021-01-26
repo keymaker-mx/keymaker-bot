@@ -9,5 +9,6 @@ pub struct Config<'a> {
     pub password: Cow<'a, str>,
     pub store_path: Cow<'a, str>,
     pub admins: Vec<Cow<'a, str>>,
+    pub admin_room_id: Cow<'a, str>,
     pub session_path: Cow<'a, str>,
 }

@@ -3,7 +3,7 @@ use crate::errors::Error;
 use crate::models::well_known::WellKnown;
 use matrix_sdk::{
     events::{room::message::MessageEventContent, AnyMessageEventContent},
-    identifiers::user_id::UserId,
+    identifiers::{user_id::UserId, RoomId},
 };
 use mrsbfh::commands::command;
 use reqwest::{Client, StatusCode};
@@ -13,8 +13,9 @@ use std::convert::TryFrom;
     help = "`!register` - Register your server to the keymaker project. You need to be server admin for this. For further information checkout [PLACEHOLDER]"
 )]
 pub async fn register<'a>(
+    matrix_client: matrix_sdk::Client,
     mut tx: mrsbfh::Sender,
-    _config: Config<'a>,
+    config: Config<'a>,
     sender: String,
     mut _args: Vec<&str>,
 ) -> Result<(), Error>
@@ -155,12 +156,37 @@ where
 
                 let content =
                     AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(
-                        "[Step 8/8] Server fulfilled automated tests. The server was sent to manual verification. This can take up to some days. The bot will notify you about any update.",
+                        format!("@room New Server needs verification: {}", server),
                     ));
-                tx.send(content).await?;
+
+                if let Ok(ref room_id) = RoomId::try_from(config.admin_room_id.as_ref()) {
+                    if matrix_client
+                        .room_send(room_id, content, None)
+                        .await
+                        .is_ok()
+                    {
+                        let content =
+                            AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(
+                                "[Step 8/8] Server fulfilled automated tests. The server was sent to manual verification. This can take up to some days. The bot will notify you about any update.",
+                            ));
+                        tx.send(content).await?;
+                    } else {
+                        let content =
+                            AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(
+                                "[ERROR][Step 8/8] Server fulfilled automated tests. But the bot wasn't able to inform the project admins. Please try again another day or report this at #serverlist:nordgedanken.dev .",
+                            ));
+                        tx.send(content).await?;
+                    }
+                } else {
+                    let content =
+                        AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(
+                            "[ERROR][Step 8/8] Server fulfilled automated tests. But the bot wasn't able to inform the project admins. Please try again another day or report this at #serverlist:nordgedanken.dev .",
+                        ));
+                    tx.send(content).await?;
+                }
 
                 // TODO write to database with status verified == 0
-                // TODO send to manual control and notify admins
+                // TODO check if already ran to not rerun if being verified
                 // TODO add admin commands to press !verify which write verified == 1 to the db (causes it to show up) and tell user it successfully got added
                 // TODO add admin command !reject <reason> to reject a server (deletes it from database)
                 // TODO add user command !cancel which stops manual verification and deletes it from db
