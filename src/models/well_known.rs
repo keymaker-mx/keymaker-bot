@@ -13,7 +13,8 @@ pub struct WellKnown {
     pub registration_status: ServerRegistrationStatus,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, sqlx::Type)]
+#[sqlx(rename = "registration", rename_all = "lowercase")]
 #[serde(rename = "registration", rename_all = "lowercase")]
 pub enum ServerRegistrationStatus {
     Open,

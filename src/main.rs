@@ -21,6 +21,7 @@ use url::Url;
 
 mod commands;
 mod config;
+mod database;
 mod errors;
 mod extensions;
 mod models;

@@ -10,4 +10,6 @@ pub enum Error {
     TokioSendError(
         #[from] tokio::sync::mpsc::error::SendError<matrix_sdk::events::AnyMessageEventContent>,
     ),
+    #[error("Unable to set database singleton")]
+    DatabaseSingletonError,
 }

@@ -1,6 +1,6 @@
-use crate::config::Config;
-use crate::errors::Error;
 use crate::models::well_known::WellKnown;
+use crate::{config::Config, database::get_database_pool};
+use crate::{errors::Error, models::well_known::ServerRegistrationStatus};
 use matrix_sdk::{
     events::{room::message::MessageEventContent, AnyMessageEventContent},
     identifiers::{user_id::UserId, RoomId},
@@ -136,8 +136,8 @@ where
                 tx.send(content).await?;
 
                 // Ensure logo_url is reachable
-                if let Some(logo_url) = well_known.logo_url {
-                    if client.head(&logo_url).send().await.is_err() {
+                if let Some(ref logo_url) = well_known.logo_url {
+                    if client.head(logo_url).send().await.is_err() {
                         let content =
                             AnyMessageEventContent::RoomMessage(MessageEventContent::notice_plain(format!(
                                 "[ERROR] The logo_url field from the .well-known file ('{}') cannot be reached.",
@@ -152,6 +152,31 @@ where
                             "[Step 7/8] Skipping check as no logo_url was defined.",
                         ));
                     tx.send(content).await?;
+                }
+
+                let database = get_database_pool(config.clone()).await?;
+
+                sqlx::query!(
+                    r#"
+                        INSERT INTO servers ( name, url, server_name, logo_url, admins, categories, rules, description, registration_status, verified )
+                        VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10 )
+                    "#,
+                    well_known.name,
+                    well_known.url,
+                    well_known.server_name,
+                    well_known.logo_url,
+                    &well_known.admins,
+                    &well_known.categories,
+                    well_known.rules,
+                    well_known.description,
+                    well_known.registration_status as ServerRegistrationStatus,
+                    false
+                )
+                .execute(&database)
+                    .await?;
+
+                for category in well_known.categories {
+                    sqlx::query!(r#"INSERT INTO servers_categories (server_url, category_name) VALUES ( $1, $2 )"#,well_known.url,category).execute(&database).await?;
                 }
 
                 let content =
@@ -185,7 +210,6 @@ where
                     tx.send(content).await?;
                 }
 
-                // TODO write to database with status verified == 0
                 // TODO check if already ran to not rerun if being verified
                 // TODO add admin commands to press !verify which write verified == 1 to the db (causes it to show up) and tell user it successfully got added
                 // TODO add admin command !reject <reason> to reject a server (deletes it from database)

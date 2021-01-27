@@ -11,4 +11,5 @@ pub struct Config<'a> {
     pub admins: Vec<Cow<'a, str>>,
     pub admin_room_id: Cow<'a, str>,
     pub session_path: Cow<'a, str>,
+    pub database_url: Cow<'a, str>,
 }

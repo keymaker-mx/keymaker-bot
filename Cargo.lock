@@ -977,6 +977,7 @@ dependencies = [
  "dotenv",
  "matrix-sdk",
  "mrsbfh",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_yaml",
