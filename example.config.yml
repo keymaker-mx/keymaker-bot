@@ -4,6 +4,7 @@ password: ""
 store_path: ""
 session_path: ""
 admin_room_id: ""
+database_url: ""
 
 admins:
   - ""
